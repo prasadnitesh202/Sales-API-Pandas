@@ -7,7 +7,7 @@
 1. Clone this repository:
 
 ```bash
-    git clone https://github.com/prasadnitesh202/Sales-API.git
+    git clone https://github.com/prasadnitesh202/Sales-API-Pandas.git
 ```
 
 2. Install virtualenv(Optional)
