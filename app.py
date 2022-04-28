@@ -1,4 +1,5 @@
 import sqlite3
+import pandas as pd
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -21,7 +22,7 @@ def home():
 @app.route("/joinTables")
 def join():
     conn = db_connection()
-    cursor = conn.execute("""SELECT
+    df = pd.read_sql_query("""SELECT
 date,
 s.product_id,
 s.branch_id,
@@ -40,21 +41,21 @@ s.product_id = p.product_id
 JOIN BRANCHMASTER AS b
 ON
 s.branch_id = b.branch_id
-""")
-    result = cursor.fetchall()
+""", conn)
+    print(df.head())
     conn.close()
     temp = {}
     res = []
-    for row in result:
-        temp["date"] = row[0]
-        temp["product_id"] = row[1]
-        temp["branch_id"] = row[2]
-        temp["price"] = row[3]
-        temp["quantity"] = row[4]
-        temp["product_name"] = row[5]
-        temp["category"] = row[6]
-        temp["branch_name"] = row[7]
-        temp["branch_city"] = row[8]
+    for index, row in df.iterrows():
+        temp["date"] = row['date']
+        temp["product_id"] = row['product_id']
+        temp["branch_id"] = row['branch_id']
+        temp["price"] = row['price']
+        temp["quantity"] = row['quantity']
+        temp["product_name"] = row['product_name']
+        temp["category"] = row['category']
+        temp["branch_name"] = row['branch_name']
+        temp["branch_city"] = row['branch_city']
         res.append(temp)
         temp = {}
     print(res)
@@ -80,32 +81,46 @@ def addSalesData():
         conn.close()
         return jsonify("Rows Added")
     except:
-        return jsonify({"error":"Operations Falied"})
+        return jsonify({"error": "Operations Falied"})
 
 
 @app.route("/leadTime")
 def calcLeadTime():
     conn = db_connection()
-    cursor = conn.execute("""Select *,Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer) AS leadTime
-from
-PurchaseOrders""")
-    result = cursor.fetchall()
+    df = pd.read_sql_query("""Select * from PurchaseOrders""", conn)
+    df[['ReceivedDate', 'OrderedDate']] = df[[
+        'ReceivedDate', 'OrderedDate']].apply(pd.to_datetime)
+    df['leadTime'] = (df['ReceivedDate'] - df['OrderedDate']).dt.days
+    print(df)
+    df['ReceivedDate'] = (df['ReceivedDate']
+                          .astype(str)  # <- cast to string to simplify
+                          #    .replace() in newer versions
+                          .replace({'NaT': None}  # <- replace with None
+                                   ))
+    df['leadTime'] = (df['leadTime']
+                      .astype(str)  # <- cast to string to simplify
+                      #    .replace() in newer versions
+                      .replace({'NaT': None}  # <- replace with None
+                               ))
+    df['ReceivedQuantity'] = (df['ReceivedQuantity']
+                              .astype(str)  # <- cast to string to simplify
+                              #    .replace() in newer versions
+                              .replace({'NaN': None}  # <- replace with None
+                                       ))
     conn.close()
     temp = {}
     res = []
-    for row in result:
-        temp["purchaseOrderId"] = row[0]
-        temp["date"] = row[1]
-        temp["product_id"] = row[2]
-        temp["branch_id"] = row[3]
-        temp["supplier_id"] = row[4]
-        temp["OrderedQuantity"] = row[5]
-        temp["ReceivedQuantity"] = row[6]
-        temp["OrderedDate"] = row[7]
-        temp["ReceivedDate"] = row[8]
-        temp["leadTime"] = row[9]
+    for index, row in df.iterrows():
+        temp["purchaseOrderId"] = row['PurchaseOrderId']
+        temp["date"] = row['date']
+        temp["product_id"] = row['product_id']
+        temp["branch_id"] = row['branch_id']
+        temp["supplier_id"] = row['supplier_id']
+        temp["OrderedQuantity"] = row['OrderedQuantity']
+        temp["ReceivedQuantity"] = row['ReceivedQuantity']
+        temp["OrderedDate"] = row['OrderedDate']
+        temp["ReceivedDate"] = row['ReceivedDate']
+        temp["leadTime"] = row['leadTime']
         res.append(temp)
         temp = {}
     print(res)
@@ -116,72 +131,54 @@ PurchaseOrders""")
 @app.route("/averageLeadTime")
 def calcAverageLeadTime():
     conn = db_connection()
-    cursor = conn.execute("""Select *,Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer) AS leadTime, AVG(Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer))
-from
-PurchaseOrders
-Group By product_id,branch_id,supplier_id""")
-    result = cursor.fetchall()
+    df = pd.read_sql_query("""Select * from PurchaseOrders""", conn)
+    df[['ReceivedDate', 'OrderedDate']] = df[[
+        'ReceivedDate', 'OrderedDate']].apply(pd.to_datetime)
+    df['leadTime'] = (df['ReceivedDate'] - df['OrderedDate']).dt.days
+    grouped_multiple = df.groupby(['product_id', 'branch_id', 'supplier_id']).agg(
+        {'leadTime': ['mean']})
+    grouped_multiple.columns = ['averageLeadTime']
+    grouped_multiple = grouped_multiple.reset_index()
+    print(grouped_multiple)
+    df = grouped_multiple
+    print(df)
     conn.close()
     temp = {}
     res = []
-    for row in result:
-        temp["purchaseOrderId"] = row[0]
-        temp["date"] = row[1]
-        temp["product_id"] = row[2]
-        temp["branch_id"] = row[3]
-        temp["supplier_id"] = row[4]
-        temp["OrderedQuantity"] = row[5]
-        temp["ReceivedQuantity"] = row[6]
-        temp["OrderedDate"] = row[7]
-        temp["ReceivedDate"] = row[8]
-        temp["leadTime"] = row[9]
-        temp["averageLeadTime"] = row[10]
+    for index, row in df.iterrows():
+        temp["product_id"] = row['product_id']
+        temp["branch_id"] = row['branch_id']
+        temp["supplier_id"] = row['supplier_id']
+        temp["averageLeadTime"] = row['averageLeadTime']
         res.append(temp)
         temp = {}
-    print(res)
+    # print(res)
 
     return jsonify(res)
-    
+
+
 @app.route("/variance")
 def calcVariance():
     conn = db_connection()
-    cursor = conn.execute("""Select *,Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer) AS leadTime,SUM((Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer)-(SELECT AVG(Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer)) FROM PurchaseOrders))*
-           (Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer)-(SELECT AVG(Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer)) FROM PurchaseOrders)) ) / (COUNT(Cast ((
-    JulianDay(ReceivedDate) - JulianDay(OrderedDate)
-) As Integer))-1) AS Variance
-from
-PurchaseOrders
-Group By product_id,branch_id,supplier_id""")
-    result = cursor.fetchall()
+    df = pd.read_sql_query("""Select * from PurchaseOrders""", conn)
+    df[['ReceivedDate', 'OrderedDate']] = df[[
+        'ReceivedDate', 'OrderedDate']].apply(pd.to_datetime)
+    df['leadTime'] = (df['ReceivedDate'] - df['OrderedDate']).dt.days
+    grouped_multiple = df.groupby(['product_id', 'branch_id', 'supplier_id']).agg(
+        {'leadTime': ['var']})
+    grouped_multiple.columns = ['leadTimeVariance']
+    grouped_multiple = grouped_multiple.reset_index()
+    print(grouped_multiple)
+    df = grouped_multiple
+    print(df)
     conn.close()
     temp = {}
     res = []
-    for row in result:
-        temp["purchaseOrderId"] = row[0]
-        temp["date"] = row[1]
-        temp["product_id"] = row[2]
-        temp["branch_id"] = row[3]
-        temp["supplier_id"] = row[4]
-        temp["OrderedQuantity"] = row[5]
-        temp["ReceivedQuantity"] = row[6]
-        temp["OrderedDate"] = row[7]
-        temp["ReceivedDate"] = row[8]
-        temp["leadTime"] = row[9]
-        temp["variance"] = row[10]
+    for index, row in df.iterrows():
+        temp["product_id"] = row['product_id']
+        temp["branch_id"] = row['branch_id']
+        temp["supplier_id"] = row['supplier_id']
+        temp["leadTimeVariance"] = row['leadTimeVariance']
         res.append(temp)
         temp = {}
     print(res)
