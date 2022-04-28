@@ -22,31 +22,17 @@ def home():
 @app.route("/joinTables")
 def join():
     conn = db_connection()
-    df = pd.read_sql_query("""SELECT
-date,
-s.product_id,
-s.branch_id,
-price,
-quantity,
-product_name,
-category,
-branch_name,
-branch_city
-FROM
-Sales AS s
-JOIN
-PRODUCTMASTER AS p
-ON
-s.product_id = p.product_id
-JOIN BRANCHMASTER AS b
-ON
-s.branch_id = b.branch_id
-""", conn)
-    print(df.head())
+    sales = pd.read_sql_query("""SELECT * from Sales""", conn)
+    product_master = pd.read_sql_query("""SELECT * from PRODUCTMASTER""", conn)
+    branchmaster = pd.read_sql_query("""SELECT * from BRANCHMASTER""", conn)
+    join_sales_product = pd.merge(sales, product_master, on='product_id')
+    join_sales_product_branch = pd.merge(
+        join_sales_product, branchmaster, on='branch_id')
+    # print(df.head())
     conn.close()
     temp = {}
     res = []
-    for index, row in df.iterrows():
+    for index, row in join_sales_product_branch.iterrows():
         temp["date"] = row['date']
         temp["product_id"] = row['product_id']
         temp["branch_id"] = row['branch_id']
@@ -58,7 +44,7 @@ s.branch_id = b.branch_id
         temp["branch_city"] = row['branch_city']
         res.append(temp)
         temp = {}
-    print(res)
+    # print(res)
 
     return jsonify(res)
 
